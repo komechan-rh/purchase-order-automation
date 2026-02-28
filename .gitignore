@@ -1,0 +1,18 @@
+# Node
+node_modules/
+.pnpm-store/
+
+# GAS
+frontend/.clasp.json
+frontend/dist/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+backend/.venv/
+backend/purchase.db
+
+# Env
+.env
+backend/.env

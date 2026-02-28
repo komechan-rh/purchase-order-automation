@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "module": "none",
+    "lib": ["ES2019"],
+    "strict": true,
+    "types": ["google-apps-script"],
+    "outFile": "dist/Code.js",
+    "removeComments": true
+  },
+  "include": ["src/**/*.ts"]
+}
