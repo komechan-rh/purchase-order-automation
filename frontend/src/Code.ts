@@ -15,13 +15,34 @@ type BackendIntentResponse = {
   status: string;
 };
 
-function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Content.TextOutput {
-  const backendUrl = getProperty("BACKEND_URL");
-  const backendApiKey = getProperty("BACKEND_API_KEY");
-  const lineAccessToken = getProperty("LINE_CHANNEL_ACCESS_TOKEN");
+type GeminiResponse = {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string;
+      }>;
+    };
+  }>;
+};
+type GeminiReplyJson = {
+  name: string;
+  count: number;
+  product_url: string;
+  message: string;
+};
 
-  if (!backendUrl || !backendApiKey || !lineAccessToken) {
-    return jsonResponse({ ok: false, error: "Required Script Properties are missing" });
+const lineAccessToken = getProperty("LINE_CHANNEL_ACCESS_TOKEN");
+const geminiApiKey = getProperty("GEMINI_API_KEY");
+const geminiModel = getProperty("GEMINI_MODEL") || "gemini-3-flash-preview";
+
+function doPost(
+  e: GoogleAppsScript.Events.DoPost,
+): GoogleAppsScript.Content.TextOutput {
+  if (!lineAccessToken || !geminiApiKey) {
+    return jsonResponse({
+      ok: false,
+      error: "Required Script Properties are missing",
+    });
   }
 
   const raw = e.postData?.contents || "{}";
@@ -43,51 +64,92 @@ function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Content.Tex
       continue;
     }
 
-    const replyMessage = handleLineTextEvent(backendUrl, backendApiKey, text, event.source?.userId || "");
-    replyToLine(lineAccessToken, replyToken, replyMessage);
+    const sheet = getSuppliesSheet();
+    const values = sheet.getDataRange().getDisplayValues();
+    const replyText = generateAmazonLinkReply(
+      geminiApiKey,
+      geminiModel,
+      text,
+      values,
+    );
+
+    replyToLine(lineAccessToken, replyToken, JSON.stringify(replyText));
     processed += 1;
   }
 
   return jsonResponse({ ok: true, processed });
 }
 
-function handleLineTextEvent(
-  backendUrl: string,
-  backendApiKey: string,
+function generateAmazonLinkReply(
+  geminiApiKey: string,
+  geminiModel: string,
   text: string,
-  userId: string,
-): string {
-  const req = {
-    text,
-    user_id: userId,
-    reply_token: "",
-  };
+  values: string[][],
+): string | GeminiReplyJson {
+  const prompt = [
+    "あなたはLINEで購買候補を返すアシスタントです。",
+    "ユーザー入力と商品一覧を見て、必要なAmazon商品リンクのみを抽出してください。",
+    "JSON形式で出力して、以下のスキーマ通りに返答してください。",
+    "スキーマ： name: 商品名（ユーザー入力から抽出）, count: 商品の個数（ユーザー入力から抽出）, product_url: Amazon商品リンク, message: ユーザー向けの短い日本語説明。",
+    `ユーザー入力: ${text}`,
+    `商品一覧: ${JSON.stringify(values)}`,
+  ].join("\n");
 
-  const response = UrlFetchApp.fetch(`${backendUrl}/api/line/intents`, {
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+  const response = UrlFetchApp.fetch(endpoint, {
     method: "post",
     contentType: "application/json",
-    payload: JSON.stringify(req),
-    headers: {
-      "X-API-Key": backendApiKey,
-    },
+    payload: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 1.0,
+        responseMimeType: "application/json",
+      },
+    }),
     muteHttpExceptions: true,
   });
 
   const status = response.getResponseCode();
   if (status < 200 || status >= 300) {
-    return `購買依頼の登録に失敗しました（HTTP ${status}）`;
+    return `リンク取得に失敗しました（HTTP ${status}）`;
   }
 
-  const data = JSON.parse(response.getContentText()) as BackendIntentResponse;
-  return [
-    "購買依頼を受け付けました。",
-    `商品: ${data.item_name}`,
-    `数量: ${data.quantity}`,
-    `注文ID: ${data.order_id}`,
-  ].join("\n");
+  const payload = JSON.parse(response.getContentText()) as GeminiResponse;
+  const textOutput =
+    payload.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+  const parsed = parseGeminiJson(textOutput)?.[0] as GeminiReplyJson;
+  if (!parsed) {
+    return "候補リンクを生成できませんでした。";
+  }
+
+  return parsed;
 }
 
-function replyToLine(channelAccessToken: string, replyToken: string, text: string): void {
+function parseGeminiJson(text: string): Record<string, unknown> | null {
+  if (!text) {
+    return null;
+  }
+
+  const normalized = text
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+  try {
+    const parsed = JSON.parse(normalized) as unknown;
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function replyToLine(
+  channelAccessToken: string,
+  replyToken: string,
+  text: string,
+): void {
   UrlFetchApp.fetch("https://api.line.me/v2/bot/message/reply", {
     method: "post",
     contentType: "application/json",
@@ -104,6 +166,26 @@ function replyToLine(channelAccessToken: string, replyToken: string, text: strin
 
 function getProperty(key: string): string {
   return PropertiesService.getScriptProperties().getProperty(key) || "";
+}
+
+function getSuppliesSheet(): GoogleAppsScript.Spreadsheet.Sheet {
+  const spreadsheetId = getProperty("GOOGLE_SHEET_ID");
+  const spreadsheet = spreadsheetId
+    ? SpreadsheetApp.openById(spreadsheetId)
+    : SpreadsheetApp.getActiveSpreadsheet();
+
+  if (!spreadsheet) {
+    throw new Error(
+      "Spreadsheet not found. Set GOOGLE_SHEET_ID in Script Properties.",
+    );
+  }
+
+  const sheet = spreadsheet.getSheetByName("備品");
+  if (!sheet) {
+    throw new Error("Sheet '備品' not found.");
+  }
+
+  return sheet;
 }
 
 function jsonResponse(body: unknown): GoogleAppsScript.Content.TextOutput {

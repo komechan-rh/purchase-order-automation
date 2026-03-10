@@ -16,6 +16,8 @@ pnpm run push
 - `BACKEND_URL` (e.g. `https://your-backend.example.com`)
 - `BACKEND_API_KEY`
 - `LINE_CHANNEL_ACCESS_TOKEN`
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL` (optional, default: `gemini-1.5-flash`)
 
 ## LINE連携
 
