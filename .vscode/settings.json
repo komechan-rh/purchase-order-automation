@@ -1,0 +1,7 @@
+{
+  "python.defaultInterpreterPath": "/Users/ryubb/Personal/purchase-order-automation/backend/.venv/bin/python",
+  "python.analysis.extraPaths": [
+    "/Users/ryubb/Personal/purchase-order-automation/backend"
+  ],
+  "python.terminal.activateEnvironment": true
+}

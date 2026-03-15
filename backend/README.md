@@ -1,6 +1,6 @@
 # Backend
 
-GASから転送された自然言語の購買指示を受け取り、スプレッドシートの商品カタログとGeminiを使って購買対象を決定し、Playwrightで購買処理を実行します。
+Amazon 商品リンクを受け取り、Playwright で購入フローを実行する API です。
 
 ## Setup
 
@@ -12,27 +12,24 @@ uv run playwright install chromium
 uv run uvicorn app.main:app --reload
 ```
 
+`docker compose up` で起動する場合も、`docker-compose.yml` 側で `--reload` を有効にしているため、`app/` 配下の変更で自動再起動します。
+
 ## Required .env
 
 - `BACKEND_API_KEY`
-- `GOOGLE_SHEET_ID`
-- `GOOGLE_SHEET_RANGE` (default: `catalog!A:B`)
-- `GOOGLE_SHEETS_API_KEY`
-- `GEMINI_API_KEY`
-- `GEMINI_MODEL`
+- `AMAZON_EMAIL`
+- `AMAZON_PASSWORD`
+- `AMAZON_HEADLESS` (default: `true`)
+- `AMAZON_SCREENSHOT_ENABLED` (default: `true`)
+- `AMAZON_SCREENSHOT_DIR` (default: `artifacts/screenshots`)
 
 ## API
 
 - `GET /health`
-- `POST /api/purchases`
-- `GET /api/purchases`
-- `POST /api/line/intents` (GASから自然言語を受け取る)
+- `POST /api/purchases/amazon` (`name`, `count`, `product_url`, `message` を受け取る)
 
-## Spreadsheet format
+## Amazon automation notes
 
-`catalog` シートのA列/B列を使用します。
-
-- A列: 商品名
-- B列: 商品リンク
-
-注: 現在の実装は Google Sheets API Key で取得するため、対象スプレッドシートはAPIキーで参照可能な公開設定が必要です。
+- 毎回 `AMAZON_EMAIL` / `AMAZON_PASSWORD` で Amazon にログインします。
+- MFA が有効なアカウントはこの実装では購入フローを継続できません。
+- ログイン後と購入準備地点で確認用スクリーンショットを保存します。

@@ -7,11 +7,11 @@ class Settings(BaseSettings):
     app_name: str = "purchase-orderautomation-backend"
     backend_api_key: str = ""
     automation_target_url: str = "https://example.com"
-    google_sheet_id: str = ""
-    google_sheet_range: str = "catalog!A:B"
-    google_sheets_api_key: str = ""
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-1.5-flash"
+    amazon_email: str = ""
+    amazon_password: str = ""
+    amazon_headless: bool = True
+    amazon_screenshot_enabled: bool = True
+    amazon_screenshot_dir: str = "artifacts/screenshots"
 
 
 settings = Settings()
