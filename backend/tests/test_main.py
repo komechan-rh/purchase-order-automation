@@ -16,6 +16,11 @@ def test_health() -> None:
 
 
 def test_create_amazon_purchase(monkeypatch) -> None:
+    test_api_key = "test-api-key"
+    monkeypatch.setattr(settings, "backend_api_key", test_api_key)
+    monkeypatch.setattr(settings, "amazon_email", "user@example.com")
+    monkeypatch.setattr(settings, "amazon_password", "secret")
+
     async def fake_run_purchase(
         item_name: str,
         quantity: int,
@@ -34,7 +39,7 @@ def test_create_amazon_purchase(monkeypatch) -> None:
             "product_url": "https://www.amazon.co.jp/dp/B000TEST",
             "message": "補充",
         },
-        headers={"X-API-Key": settings.backend_api_key} if settings.backend_api_key else None,
+        headers={"X-API-Key": test_api_key},
     )
 
     assert response.status_code == 200

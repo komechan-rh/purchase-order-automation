@@ -70,13 +70,13 @@ class PlaywrightSessionManager:
             await self.playwright.stop()
 
     async def login(self) -> None:
+        if not self.settings.amazon_email or not self.settings.amazon_password:
+            raise RuntimeError("Amazon credentials are required")
         page = self._require_page()
         await page.goto(
             AMAZON_LOGIN_LINK,
             wait_until="domcontentloaded",
         )
-        if not self.settings.amazon_email or not self.settings.amazon_password:
-            raise RuntimeError("Amazon credentials are required")
 
         # 表示されているログイン画面の入力欄に Amazon アカウントのメールアドレスを入力する。
         for selector in ['input[name="email"]', 'input[type="email"]']:

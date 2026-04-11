@@ -8,7 +8,9 @@ app = FastAPI(title=settings.app_name)
 
 
 def _require_api_key(x_api_key: str | None) -> None:
-    if settings.backend_api_key and x_api_key != settings.backend_api_key:
+    if not settings.backend_api_key:
+        raise HTTPException(status_code=500, detail="Server misconfiguration: BACKEND_API_KEY is not set")
+    if x_api_key != settings.backend_api_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
@@ -24,6 +26,14 @@ def create_amazon_purchase(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ) -> PurchaseAcceptedResponse:
     _require_api_key(x_api_key)
+
+    try:
+        purchase_service.resolve_target_url(payload.product_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if not settings.amazon_email or not settings.amazon_password:
+        raise HTTPException(status_code=500, detail="Server misconfiguration: Amazon credentials are not set")
 
     background_tasks.add_task(
         purchase_service.run,
