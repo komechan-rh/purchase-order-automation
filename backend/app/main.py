@@ -1,3 +1,6 @@
+import asyncio
+import logging
+
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
 
 from .schemas import GeminiReplyPurchaseRequest, PurchaseAcceptedResponse
@@ -5,6 +8,7 @@ from .services.purchase_runner import purchase_service
 from .settings import settings
 
 app = FastAPI(title=settings.app_name)
+logger = logging.getLogger("uvicorn.error").getChild("app.main")
 
 
 def _require_api_key(x_api_key: str | None) -> None:
@@ -17,6 +21,30 @@ def _require_api_key(x_api_key: str | None) -> None:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+async def _run_purchase_in_background(
+    item_name: str,
+    quantity: int,
+    message: str,
+    product_url: str,
+) -> None:
+    """Run purchase in background with exception handling and logging."""
+    try:
+        await purchase_service.run(item_name, quantity, message, product_url)
+        logger.info(f"Purchase completed for: {item_name}")
+    except Exception as e:
+        logger.error(f"Background purchase task failed for {item_name}: {e}", exc_info=True)
+
+
+def _run_purchase_sync_wrapper(
+    item_name: str,
+    quantity: int,
+    message: str,
+    product_url: str,
+) -> None:
+    """Sync wrapper to run async function in background using asyncio.run()."""
+    asyncio.run(_run_purchase_in_background(item_name, quantity, message, product_url))
 
 
 @app.post("/api/purchases/amazon", response_model=PurchaseAcceptedResponse)
@@ -36,7 +64,7 @@ def create_amazon_purchase(
         raise HTTPException(status_code=500, detail="Server misconfiguration: Amazon credentials are not set")
 
     background_tasks.add_task(
-        purchase_service.run,
+        _run_purchase_sync_wrapper,
         payload.name,
         payload.count,
         payload.message,
